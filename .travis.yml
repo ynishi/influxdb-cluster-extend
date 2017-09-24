@@ -1,6 +1,17 @@
+sudo: required
+
 language: go
+
+services:
+  - docker
+
+before_install:
+  - docker pull influxdb
+  - docker images
+
 install:
   - go get -u github.com/golang/dep/cmd/dep
   - dep ensure
+
 go:
   - 1.8
