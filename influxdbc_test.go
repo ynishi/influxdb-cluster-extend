@@ -7,7 +7,7 @@ import (
 )
 
 var (
-	client      Client
+	client      *Client
 	checkResult *CheckResult
 	idResult    string
 )
@@ -105,7 +105,7 @@ func TestGetId(t *testing.T) {
 	}
 }
 
-func TestClient(t *testing.T) {
+func TestNewClient(t *testing.T) {
 
 	ctx := context.Background()
 	ctx, cancel := context.WithCancel(ctx)
@@ -116,7 +116,24 @@ func TestClient(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	if testClient.ctx != ctx {
+		t.Fatalf("Failed new client:\n want: %q,\n have: %q\n")
+	}
+
+}
+
+func TestClient(t *testing.T) {
+
+	ctx := context.Background()
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	testClient := &Client{
+		client.container,
+		client.ctx,
+	}
+
 	if !reflect.DeepEqual(client, testClient) {
-		t.Fatal("Not match client:\n want: %q,\n have: %q\n", client, testClient)
+		t.Fatalf("Not match client:\n want: %q,\n have: %q\n", client, testClient)
 	}
 }
