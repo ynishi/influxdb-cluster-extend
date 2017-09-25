@@ -4,12 +4,15 @@ import (
 	"context"
 	"reflect"
 	"testing"
+	"golang.org/x/exp/shiny/widget/node"
+	"github.com/docker/docker/pkg/discovery/nodes"
 )
 
 var (
 	client      *Client
 	checkResult *CheckResult
 	idResult    string
+	ctx context.Context
 )
 
 func init() {
@@ -24,6 +27,7 @@ func init() {
 	defer cancel()
 
 	client, _ = NewClient(ctx)
+	node, _ = NewNode(ctx)
 }
 
 func TestRun(t *testing.T) {
@@ -135,5 +139,80 @@ func TestClient(t *testing.T) {
 
 	if !reflect.DeepEqual(client, testClient) {
 		t.Fatalf("Not match client:\n want: %q,\n have: %q\n", client, testClient)
+	}
+}
+
+func TestNode(t *testing.T) {
+
+	host := "127.0.0.1"
+	port := "3999"
+	testNode := &Node{
+		host,
+		port,
+		ctx,
+	}
+
+	if !reflect.DeepEqual(node, testNode) {
+		t.Fatalf("Not match node:\n want: %q,\n have: %q\n",node, testNode)
+	}
+}
+
+func TestCheckNode(t *testing.T) {
+
+	testNode := NewNode(ctx)
+	res, err := testNode.Check()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res != Ok {
+		t.Fatalf("Check failed:\n want: %q,\n have: %q\n",Ok, res)
+	}
+}
+
+func TestCountNode(t *testing.T) {
+
+	if testNodes.Count() != 1 {
+		t.Fatalf("Not match testNodes count:\n want: %q,\n have:%q\n", 1, testNodes.Count())
+	}
+
+}
+
+func TestAddNode(t *testing.T) {
+
+	testNode := NewNode(ctx)
+	_, err := testNodes.add(testNode)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(nodes, testNodes) {
+		t.Fatalf("Not match nodes:\n want:%q,\n have: %q\n",nodes,testNodes)
+	}
+}
+
+func TestNodeId(t *testing.T) {
+
+	testNode := NewNode(ctx)
+	testId, err := testNodes.add(testNode)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if testId != id {
+		t.Fatal("Not match node id:\n want:%q,\n have: %q\n",id,testId)
+	}
+}
+
+func TestRemoveNode(t *testing.T) {
+
+	testNode := NewNode(ctx)
+	testId, err := testNodes.add(testNode)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err := testNodes.remove(testId)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if testNodes.count() != 0 {
+		t.Fatalf("Node count > 0:\n want: 0,\n have: %q\n", testNodes.count())
 	}
 }
