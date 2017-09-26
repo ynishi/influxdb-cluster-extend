@@ -4,8 +4,7 @@ import (
 	"context"
 	"reflect"
 	"testing"
-	"golang.org/x/exp/shiny/widget/node"
-	"github.com/docker/docker/pkg/discovery/nodes"
+
 )
 
 var (
@@ -28,6 +27,8 @@ func init() {
 
 	client, _ = NewClient(ctx)
 	node, _ = NewNode(ctx)
+	masterNode, _ = NewMasterNode(ctx)
+	cluster, _ = NewCluster(ctx)
 }
 
 func TestRun(t *testing.T) {
@@ -157,62 +158,119 @@ func TestNode(t *testing.T) {
 	}
 }
 
-func TestCheckNode(t *testing.T) {
+func TestNewNode(t *testing.T) {
 
 	testNode := NewNode(ctx)
-	res, err := testNode.Check()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if res != Ok {
-		t.Fatalf("Check failed:\n want: %q,\n have: %q\n",Ok, res)
+	if !reflect.DeepEqual(node, testNode) {
+		t.Fatalf("Not match node by NewNode:\n want: %q,\n have: %q\n",node, testNode)
 	}
 }
 
-func TestCountNode(t *testing.T) {
+func TestCheckNode(t *testing.T) {
 
-	if testNodes.Count() != 1 {
-		t.Fatalf("Not match testNodes count:\n want: %q,\n have:%q\n", 1, testNodes.Count())
+	res, err := node.Check()
+	if err != nil {
+		t.Fatal(err)
 	}
-
+	if res != OK {
+		t.Fatalf("Check failed:\n want: %q,\n have: %q\n", OK, res)
+	}
 }
 
 func TestAddNode(t *testing.T) {
 
-	testNode := NewNode(ctx)
-	_, err := testNodes.add(testNode)
+	testCluster := NewCluster(ctx)
+	nodeId, err := testCluster.Add(node)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !reflect.DeepEqual(nodes, testNodes) {
+	if nodeId != id {
+		t.Fatal("Not match node id:\n want:%q,\n have: %q\n",id,nodeId)
+	}
+	if !reflect.DeepEqual(cluster, testCluster) {
 		t.Fatalf("Not match nodes:\n want:%q,\n have: %q\n",nodes,testNodes)
 	}
 }
 
-func TestNodeId(t *testing.T) {
+func TestNodeIds(t *testing.T) {
 
-	testNode := NewNode(ctx)
-	testId, err := testNodes.add(testNode)
+	testIds, err := cluster.Ids()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if testId != id {
-		t.Fatal("Not match node id:\n want:%q,\n have: %q\n",id,testId)
+	if testIds != ids {
+		t.Fatal("Not match node ids:\n want:%q,\n have: %q\n",ids,testIds)
 	}
 }
 
 func TestRemoveNode(t *testing.T) {
 
-	testNode := NewNode(ctx)
-	testId, err := testNodes.add(testNode)
+	testCluster := NewCluster(ctx)
+	nodeId, err := testCluster.Add(node)
+	err := cluster.Remove(nodeId)
 	if err != nil {
 		t.Fatal(err)
 	}
-	err := testNodes.remove(testId)
+	for _, id := range cluster.Ids() {
+		if id == nodeId {
+			t.Fatalf("Failed remove node: %q remains\n", nodeId)
+		}
+	}
+
+}
+
+func TestNewMasterNode(t *testing.T){
+
+	testMasterNode, err := NewMasterNode(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if testNodes.count() != 0 {
-		t.Fatalf("Node count > 0:\n want: 0,\n have: %q\n", testNodes.count())
+	if !reflect.DeepEqual(testMasterNode, masterNode) {
+		t.Fatalf("Failed new node:\n want: %q,\n have: %q\n", masterNode, testMasterNode)
 	}
 }
+
+func TestCheckMasterNode(t *testing.T) {
+
+	res, err := masterNode.Check()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res != OK {
+		t.Fatalf("Master Node check failed:\n want: %q,\n have: %q\n", OK, res)
+	}
+}
+
+func TestCountNodeCluster(t *testing.T) {
+
+	if cluster.Count() != 1 {
+		t.Fatalf("Not match testNodes count:\n want: %q,\n have:%q\n", 1, cluster.Count())
+	}
+
+}
+
+func TestStartCluster(t *testing.T) {
+
+	testMasterNode := NewMasterNode(ctx, &MasterNodeConfig{})
+	testCluster := NewCluster(ctx, testMaterNode)
+	err := testCluster.Start()
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+
+func TestFailOver(t *testing.T) {
+
+	testMasterNode := cluster.GetMasterNode()
+
+	testNewMasterId, err := cluster.FailOver()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if testNewMasterId == testMasterNode.Id {
+		t.Fatal("failed failover, master node not changed.")
+	}
+}
+
+func TestCheckCluster
