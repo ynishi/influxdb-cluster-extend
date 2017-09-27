@@ -5,6 +5,8 @@ import (
 	"reflect"
 	"testing"
 
+	"golang.org/x/exp/shiny/widget/node"
+	"github.com/docker/docker/daemon/cluster"
 )
 
 var (
@@ -160,7 +162,10 @@ func TestNode(t *testing.T) {
 
 func TestNewNode(t *testing.T) {
 
-	testNode := NewNode(ctx)
+	testNode,err := NewNode(ctx, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if !reflect.DeepEqual(node, testNode) {
 		t.Fatalf("Not match node by NewNode:\n want: %q,\n have: %q\n",node, testNode)
 	}
