@@ -4,16 +4,16 @@ import (
 	"context"
 	"reflect"
 	"testing"
-
-	"golang.org/x/exp/shiny/widget/node"
-	"github.com/docker/docker/daemon/cluster"
 )
 
 var (
 	client      *Client
 	checkResult *CheckResult
 	idResult    string
-	ctx context.Context
+	ctx         context.Context
+	node        *Node
+	masterNode  *MasterNode
+	cluster     *Cluster
 )
 
 func init() {
@@ -28,9 +28,9 @@ func init() {
 	defer cancel()
 
 	client, _ = NewClient(ctx)
-	node, _ = NewNode(ctx)
-	masterNode, _ = NewMasterNode(ctx)
-	cluster, _ = NewCluster(ctx)
+	node, _ = NewNode(ctx, nil)
+	masterNode, _ = NewMasterNode(ctx, nil)
+	cluster, _ = NewCluster(ctx, nil)
 }
 
 func TestRun(t *testing.T) {
@@ -150,24 +150,26 @@ func TestNode(t *testing.T) {
 	host := "127.0.0.1"
 	port := "3999"
 	testNode := &Node{
-		host,
-		port,
-		ctx,
+		Host: host,
+		Port: port,
+		Ctx:  ctx,
+		Etcd: nil,
+		Apic: nil,
 	}
 
 	if !reflect.DeepEqual(node, testNode) {
-		t.Fatalf("Not match node:\n want: %q,\n have: %q\n",node, testNode)
+		t.Fatalf("Not match node:\n want: %q,\n have: %q\n", node, testNode)
 	}
 }
 
 func TestNewNode(t *testing.T) {
 
-	testNode,err := NewNode(ctx, nil)
+	testNode, err := NewNode(ctx, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !reflect.DeepEqual(node, testNode) {
-		t.Fatalf("Not match node by NewNode:\n want: %q,\n have: %q\n",node, testNode)
+		t.Fatalf("Not match node by NewNode:\n want: %q,\n have: %q\n", node, testNode)
 	}
 }
 
@@ -177,7 +179,7 @@ func TestCheckNode(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if res != OK {
+	if res.Code != OK {
 		t.Fatalf("Check failed:\n want: %q,\n have: %q\n", OK, res)
 	}
 }
@@ -190,10 +192,10 @@ func TestAddNode(t *testing.T) {
 		t.Fatal(err)
 	}
 	if nodeId != id {
-		t.Fatal("Not match node id:\n want:%q,\n have: %q\n",id,nodeId)
+		t.Fatal("Not match node id:\n want:%q,\n have: %q\n", id, nodeId)
 	}
 	if !reflect.DeepEqual(cluster, testCluster) {
-		t.Fatalf("Not match nodes:\n want:%q,\n have: %q\n",nodes,testNodes)
+		t.Fatalf("Not match nodes:\n want:%q,\n have: %q\n", nodes, testNodes)
 	}
 }
 
@@ -204,7 +206,7 @@ func TestNodeIds(t *testing.T) {
 		t.Fatal(err)
 	}
 	if testIds != ids {
-		t.Fatal("Not match node ids:\n want:%q,\n have: %q\n",ids,testIds)
+		t.Fatal("Not match node ids:\n want:%q,\n have: %q\n", ids, testIds)
 	}
 }
 
@@ -224,7 +226,7 @@ func TestRemoveNode(t *testing.T) {
 
 }
 
-func TestNewMasterNode(t *testing.T){
+func TestNewMasterNode(t *testing.T) {
 
 	testMasterNode, err := NewMasterNode(ctx)
 	if err != nil {
@@ -241,7 +243,7 @@ func TestCheckMasterNode(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if res != OK {
+	if res.Code != OK {
 		t.Fatalf("Master Node check failed:\n want: %q,\n have: %q\n", OK, res)
 	}
 }
@@ -264,7 +266,6 @@ func TestStartCluster(t *testing.T) {
 	}
 }
 
-
 func TestFailOver(t *testing.T) {
 
 	testMasterNode := cluster.GetMasterNode()
@@ -277,5 +278,3 @@ func TestFailOver(t *testing.T) {
 		t.Fatal("failed failover, master node not changed.")
 	}
 }
-
-func TestCheckCluster

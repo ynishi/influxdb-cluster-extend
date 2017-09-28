@@ -3,13 +3,14 @@ package influxdbc
 import (
 	"context"
 	"log"
+	"time"
 
+	"fmt"
+
+	eclient "github.com/coreos/etcd/client"
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
 	dclient "github.com/docker/docker/client"
-	"github.com/influxdata/influxdb"
-	eclient "github.com/coreos/etcd/client"
-	"fmt"
 )
 
 const (
@@ -80,13 +81,35 @@ type Node struct {
 	Host string
 	Port string
 	Etcd eclient.Node
-	Apic eclient.Kapi
-	Ctx context.Context
+	Apic eclient.KeysAPI
+	Ctx  context.Context
+}
+
+type MasterNode struct {
+	Checker
+	Host string
+	Port string
+	Etcd eclient.Node
+	Apic eclient.KeysAPI
+	Ctx  context.Context
+}
+
+type Cluster struct {
+	Checker
+	Endpoint string
+	Port     string
+	Nodes    []Checker
+	Ctx      context.Context
 }
 
 type NodeConfig struct {
 	Host string
 	Port string
+}
+
+type ClusterConfig struct {
+	Endpoint string
+	Port     string
 }
 
 type Checker interface {
@@ -96,7 +119,7 @@ type Checker interface {
 func NewNode(ctx context.Context, nodeConfig *NodeConfig) (node *Node, err error) {
 
 	cfg := eclient.Config{
-		Endpoints:               []string{fmt.Sprintf("%s:2379",nodeConfig.Host)},
+		Endpoints:               []string{fmt.Sprintf("%s:2379", nodeConfig.Host)},
 		Transport:               eclient.DefaultTransport,
 		HeaderTimeoutPerRequest: time.Second,
 	}
@@ -114,32 +137,129 @@ func NewNode(ctx context.Context, nodeConfig *NodeConfig) (node *Node, err error
 			Apic: kapi,
 		}
 	} else {
-		node = &Node{Ctx:ctx}
+		node = &Node{Ctx: ctx}
 	}
 	return node, nil
 }
 
-func (n *Node) Check() (res *CheckResult,err error) {
+func NewMasterNode(ctx context.Context, nodeConfig *NodeConfig) (node *MasterNode, err error) {
+
+	cfg := eclient.Config{
+		Endpoints:               []string{fmt.Sprintf("%s:2379", nodeConfig.Host)},
+		Transport:               eclient.DefaultTransport,
+		HeaderTimeoutPerRequest: time.Second,
+	}
+	c, err := eclient.New(cfg)
+	if err != nil {
+		log.Fatal(err)
+	}
+	kapi := eclient.NewKeysAPI(c)
+	if nodeConfig != nil {
+		node = &MasterNode{
+			Host: nodeConfig.Host,
+			Port: nodeConfig.Port,
+			Ctx:  ctx,
+			Etcd: c,
+			Apic: kapi,
+		}
+	} else {
+		node = &MasterNode{Ctx: ctx}
+	}
+	return node, nil
+}
+
+func NewCluster(ctx context.Context, clusterConfig *ClusterConfig) (node *Cluster, err error) {
+
+	cfg := eclient.Config{
+		Endpoints:               []string{fmt.Sprintf("%s:2379", clusterConfig.Endpoint)},
+		Transport:               eclient.DefaultTransport,
+		HeaderTimeoutPerRequest: time.Second,
+	}
+	c, err := eclient.New(cfg)
+	if err != nil {
+		log.Fatal(err)
+	}
+	kapi := eclient.NewKeysAPI(c)
+	if clusterConfig != nil {
+		node = &Cluster{
+			Endpoint: clusterConfig.Endpoint,
+			Port:     clusterConfig.Port,
+			Ctx:      ctx,
+		}
+	} else {
+		node = &Cluster{Ctx: ctx}
+	}
+	return node, nil
+}
+
+func (n *Node) Check() (res *CheckResult, err error) {
 	resp, err := n.Apic.Get(n.Ctx, "/status", nil)
 	if err != nil {
 		return nil, err
 	}
-	if resp == "CRITICAL" {
+	if resp.Node.Value == "CRITICAL" {
 		return &CheckResult{
 			CRITICAL,
 			"CRITICAL",
 		}, nil
-	} else if resp == "WARN"{
+	} else if resp.Node.Value == "WARN" {
 		return &CheckResult{
 			WARN,
 			"WARN",
-		},nil
-	} else if resp == "OK" {
+		}, nil
+	} else if resp.Node.Value == "OK" {
 		return &CheckResult{
 			OK,
 			"OK",
 		}, nil
 	} else {
 		return nil, nil
+	}
+}
+
+func (mn *MasterNode) Check() (res *CheckResult, err error) {
+	resp, err := mn.Apic.Get(mn.Ctx, "/status", nil)
+	if err != nil {
+		return nil, err
+	}
+	if resp.Node.Value == "CRITICAL" {
+		return &CheckResult{
+			CRITICAL,
+			"CRITICAL",
+		}, nil
+	} else if resp.Node.Value == "OK" {
+		return &CheckResult{
+			OK,
+			"OK",
+		}, nil
+	} else {
+		return nil, nil
+	}
+}
+
+func (c *Cluster) Check() (res *CheckResult, err error) {
+	var checkOk, checkNG []CheckResult
+	for _, n := range c.Nodes {
+		res := n.Check()
+		if err != nil {
+			return nil, err
+		}
+		if res.Code == OK {
+			checkOk = append(checkOk, *res)
+		} else {
+			checkNG = append(checkNG, *res)
+		}
+	}
+
+	if len(checkNG) > len(checkOk) {
+		return &CheckResult{
+			CRITICAL,
+			"CRITICAL",
+		}, nil
+	} else {
+		return &CheckResult{
+			OK,
+			"OK",
+		}, nil
 	}
 }
