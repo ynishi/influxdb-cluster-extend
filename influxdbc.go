@@ -2,6 +2,7 @@ package influxdbc
 
 import (
 	"context"
+	"errors"
 	"log"
 	"time"
 
@@ -78,9 +79,10 @@ func NewClient(ctx context.Context) (client *Client, err error) {
 
 type Node struct {
 	Checker
+	StartStopper
 	Host string
 	Port string
-	Etcd eclient.Node
+	Etcd eclient.Client
 	Apic eclient.KeysAPI
 	Ctx  context.Context
 }
@@ -89,17 +91,20 @@ type MasterNode struct {
 	Checker
 	Host string
 	Port string
-	Etcd eclient.Node
+	Etcd eclient.Client
 	Apic eclient.KeysAPI
 	Ctx  context.Context
 }
 
 type Cluster struct {
 	Checker
-	Endpoint string
-	Port     string
-	Nodes    []Checker
-	Ctx      context.Context
+	StartStopper
+	Endpoint     string
+	Port         string
+	Nodes        map[string]*Node
+	MasterNode   *MasterNode
+	MasterNodeId string
+	Ctx          context.Context
 }
 
 type NodeConfig struct {
@@ -116,8 +121,24 @@ type Checker interface {
 	Check() *CheckResult
 }
 
+type Starter interface {
+	Start() error
+}
+
+type Stopper interface {
+	Stop() error
+}
+
+type StartStopper interface {
+	Starter
+	Stopper
+}
+
 func NewNode(ctx context.Context, nodeConfig *NodeConfig) (node *Node, err error) {
 
+	if nodeConfig == nil {
+		return nil, errors.New("node config is nil.")
+	}
 	cfg := eclient.Config{
 		Endpoints:               []string{fmt.Sprintf("%s:2379", nodeConfig.Host)},
 		Transport:               eclient.DefaultTransport,
@@ -142,54 +163,12 @@ func NewNode(ctx context.Context, nodeConfig *NodeConfig) (node *Node, err error
 	return node, nil
 }
 
-func NewMasterNode(ctx context.Context, nodeConfig *NodeConfig) (node *MasterNode, err error) {
-
-	cfg := eclient.Config{
-		Endpoints:               []string{fmt.Sprintf("%s:2379", nodeConfig.Host)},
-		Transport:               eclient.DefaultTransport,
-		HeaderTimeoutPerRequest: time.Second,
-	}
-	c, err := eclient.New(cfg)
-	if err != nil {
-		log.Fatal(err)
-	}
-	kapi := eclient.NewKeysAPI(c)
-	if nodeConfig != nil {
-		node = &MasterNode{
-			Host: nodeConfig.Host,
-			Port: nodeConfig.Port,
-			Ctx:  ctx,
-			Etcd: c,
-			Apic: kapi,
-		}
-	} else {
-		node = &MasterNode{Ctx: ctx}
-	}
-	return node, nil
+func (n *Node) Start() (err error) {
+	return nil
 }
 
-func NewCluster(ctx context.Context, clusterConfig *ClusterConfig) (node *Cluster, err error) {
-
-	cfg := eclient.Config{
-		Endpoints:               []string{fmt.Sprintf("%s:2379", clusterConfig.Endpoint)},
-		Transport:               eclient.DefaultTransport,
-		HeaderTimeoutPerRequest: time.Second,
-	}
-	c, err := eclient.New(cfg)
-	if err != nil {
-		log.Fatal(err)
-	}
-	kapi := eclient.NewKeysAPI(c)
-	if clusterConfig != nil {
-		node = &Cluster{
-			Endpoint: clusterConfig.Endpoint,
-			Port:     clusterConfig.Port,
-			Ctx:      ctx,
-		}
-	} else {
-		node = &Cluster{Ctx: ctx}
-	}
-	return node, nil
+func (n *Node) stop() (err error) {
+	return nil
 }
 
 func (n *Node) Check() (res *CheckResult, err error) {
@@ -217,6 +196,35 @@ func (n *Node) Check() (res *CheckResult, err error) {
 	}
 }
 
+func NewMasterNode(ctx context.Context, nodeConfig *NodeConfig) (node *MasterNode, err error) {
+
+	if nodeConfig == nil {
+		return nil, errors.New("node config is nil.")
+	}
+	cfg := eclient.Config{
+		Endpoints:               []string{fmt.Sprintf("%s:2379", nodeConfig.Host)},
+		Transport:               eclient.DefaultTransport,
+		HeaderTimeoutPerRequest: time.Second,
+	}
+	c, err := eclient.New(cfg)
+	if err != nil {
+		log.Fatal(err)
+	}
+	kapi := eclient.NewKeysAPI(c)
+	if nodeConfig != nil {
+		node = &MasterNode{
+			Host: nodeConfig.Host,
+			Port: nodeConfig.Port,
+			Ctx:  ctx,
+			Etcd: c,
+			Apic: kapi,
+		}
+	} else {
+		node = &MasterNode{Ctx: ctx}
+	}
+	return node, nil
+}
+
 func (mn *MasterNode) Check() (res *CheckResult, err error) {
 	resp, err := mn.Apic.Get(mn.Ctx, "/status", nil)
 	if err != nil {
@@ -237,10 +245,53 @@ func (mn *MasterNode) Check() (res *CheckResult, err error) {
 	}
 }
 
+func NewCluster(ctx context.Context, clusterConfig *ClusterConfig) (node *Cluster, err error) {
+
+	if clusterConfig != nil {
+		node = &Cluster{
+			Endpoint: clusterConfig.Endpoint,
+			Port:     clusterConfig.Port,
+			Ctx:      ctx,
+		}
+	} else {
+		node = &Cluster{Ctx: ctx}
+	}
+	return node, nil
+}
+
+func (c *Cluster) Start() (err error) {
+	return nil
+}
+
+func (c *Cluster) Stop() (err error) {
+	return nil
+}
+
+func (c *Cluster) Add(node *Node) (id string, err error) {
+	if node == nil {
+		return "", errors.New("cannot add node, node is nil")
+	}
+	id = mkHashId(node)
+	c.Nodes[id] = node
+	return id, nil
+}
+
+func (c *Cluster) Remove(id string) (err error) {
+	return nil
+}
+
+func mkHashId(node *Node) (id string) {
+	return ""
+}
+
+func (c *Cluster) FailOver() (err error) {
+	return nil
+}
+
 func (c *Cluster) Check() (res *CheckResult, err error) {
 	var checkOk, checkNG []CheckResult
 	for _, n := range c.Nodes {
-		res := n.Check()
+		res, err := n.Check()
 		if err != nil {
 			return nil, err
 		}

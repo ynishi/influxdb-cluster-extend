@@ -14,6 +14,7 @@ var (
 	node        *Node
 	masterNode  *MasterNode
 	cluster     *Cluster
+	id          string
 )
 
 func init() {
@@ -31,6 +32,7 @@ func init() {
 	node, _ = NewNode(ctx, nil)
 	masterNode, _ = NewMasterNode(ctx, nil)
 	cluster, _ = NewCluster(ctx, nil)
+	id = ""
 }
 
 func TestRun(t *testing.T) {
@@ -186,7 +188,7 @@ func TestCheckNode(t *testing.T) {
 
 func TestAddNode(t *testing.T) {
 
-	testCluster := NewCluster(ctx)
+	testCluster, err := NewCluster(ctx, nil)
 	nodeId, err := testCluster.Add(node)
 	if err != nil {
 		t.Fatal(err)
@@ -195,30 +197,22 @@ func TestAddNode(t *testing.T) {
 		t.Fatal("Not match node id:\n want:%q,\n have: %q\n", id, nodeId)
 	}
 	if !reflect.DeepEqual(cluster, testCluster) {
-		t.Fatalf("Not match nodes:\n want:%q,\n have: %q\n", nodes, testNodes)
-	}
-}
-
-func TestNodeIds(t *testing.T) {
-
-	testIds, err := cluster.Ids()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if testIds != ids {
-		t.Fatal("Not match node ids:\n want:%q,\n have: %q\n", ids, testIds)
+		t.Fatalf("Not match nodes:\n want:%q,\n have: %q\n", cluster, testCluster)
 	}
 }
 
 func TestRemoveNode(t *testing.T) {
 
-	testCluster := NewCluster(ctx)
-	nodeId, err := testCluster.Add(node)
-	err := cluster.Remove(nodeId)
+	testCluster, err := NewCluster(ctx, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, id := range cluster.Ids() {
+	nodeId, err := testCluster.Add(node)
+	err = cluster.Remove(nodeId)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for id, _ := range cluster.Nodes {
 		if id == nodeId {
 			t.Fatalf("Failed remove node: %q remains\n", nodeId)
 		}
@@ -226,9 +220,21 @@ func TestRemoveNode(t *testing.T) {
 
 }
 
+func TestStopCluster(t *testing.T) {
+
+	testCluster, err := NewCluster(ctx, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = testCluster.Stop()
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestNewMasterNode(t *testing.T) {
 
-	testMasterNode, err := NewMasterNode(ctx)
+	testMasterNode, err := NewMasterNode(ctx, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -248,19 +254,10 @@ func TestCheckMasterNode(t *testing.T) {
 	}
 }
 
-func TestCountNodeCluster(t *testing.T) {
-
-	if cluster.Count() != 1 {
-		t.Fatalf("Not match testNodes count:\n want: %q,\n have:%q\n", 1, cluster.Count())
-	}
-
-}
-
 func TestStartCluster(t *testing.T) {
 
-	testMasterNode := NewMasterNode(ctx, &MasterNodeConfig{})
-	testCluster := NewCluster(ctx, testMaterNode)
-	err := testCluster.Start()
+	testCluster, err := NewCluster(ctx, nil)
+	err = testCluster.Start()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -268,13 +265,13 @@ func TestStartCluster(t *testing.T) {
 
 func TestFailOver(t *testing.T) {
 
-	testMasterNode := cluster.GetMasterNode()
+	testMasterNodeId := cluster.MasterNodeId
 
-	testNewMasterId, err := cluster.FailOver()
+	err := cluster.FailOver()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if testNewMasterId == testMasterNode.Id {
+	if cluster.MasterNodeId == testMasterNodeId {
 		t.Fatal("failed failover, master node not changed.")
 	}
 }
