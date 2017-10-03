@@ -245,26 +245,51 @@ func (mn *MasterNode) Check() (res *CheckResult, err error) {
 	}
 }
 
-func NewCluster(ctx context.Context, clusterConfig *ClusterConfig) (node *Cluster, err error) {
+func NewCluster(ctx context.Context, clusterConfig *ClusterConfig) (cluster *Cluster, err error) {
 
 	if clusterConfig != nil {
-		node = &Cluster{
+		cluster = &Cluster{
 			Endpoint: clusterConfig.Endpoint,
 			Port:     clusterConfig.Port,
 			Ctx:      ctx,
 		}
 	} else {
-		node = &Cluster{Ctx: ctx}
+		cluster = &Cluster{Ctx: ctx}
 	}
-	return node, nil
+	return cluster, nil
 }
 
 func (c *Cluster) Start() (err error) {
+
+	for _, node := range c.Nodes {
+		err := node.Start()
+		if err != nil {
+			return err
+		}
+	}
+	_, err = c.Check()
+	if err != nil {
+		c.Stop()
+		return errors.New("failed start cluster: "+err.Error())
+	}
 	return nil
 }
 
 func (c *Cluster) Stop() (err error) {
-	return nil
+
+	isError := false
+	for id, node := range c.Nodes {
+		err := node.Stop()
+		if err != nil {
+			isError = true
+			log.Println("failed stop node: %s, %v",id,err)
+		}
+	}
+	if isError {
+		return errors.New("failed stop cluster: "+err.Error())
+	} else {
+		return nil
+	}
 }
 
 func (c *Cluster) Add(node *Node) (id string, err error) {
